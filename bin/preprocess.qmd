@@ -6,6 +6,10 @@ format:
         theme: [default]
         reference-location: margin
         citation-location: margin
+        page-layout: full
+        fig-format: svg
+        fig-width: 8
+        fig-height: 5
 bibliography: ../references.bib
 
 ---
@@ -93,6 +97,7 @@ done <  ../data/Camel_milk_Microbiome_analysis/sample_paths.txt
 ### Generar tabla concatenada
 
 ```{bash}
+#| eval: false
 
 kraken_files=$(ls -d ../outputs/taxonomy_reads/*.report)
 
@@ -105,11 +110,17 @@ kraken-biom $kraken_files --fmt json -o ../outputs/taxonomy_reads/samples.biom
 
 
 ```{r}
+#| warning: false
+#| column: page
+#| out-width: 100%
+#| fig-format: svg
+
 library("phyloseq")
 library("ggplot2")
 library("RColorBrewer")
 library("patchwork")
 library(tidyverse)
+library(gtools)
 
 
 metagenomes <- import_biom("../outputs/taxonomy_reads/samples.biom")
@@ -119,31 +130,76 @@ metagenomes@tax_table@.Data <- substring(metagenomes@tax_table@.Data, 4)
 colnames(metagenomes@tax_table@.Data)<- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
 
 # sum of OTUs per sample
-data.frame(n = sample_sums(metagenomes)) %>% ggplot(aes(x = rownames(.), y = n))+geom_col()
+data.frame(n = sample_sums(metagenomes)) %>% 
+    ggplot(aes(x = rownames(.), y = n))+
+        geom_col()+
+        theme_classic()+
+        labs(x = "muestras", title = "OTUS por muestra")+
+        theme(axis.text.x = element_text(angle = 90, size = 5))
 ```
 
+
+## Mapa 
+
+```{r}
+#| warning: false
+#| column: page
+#| out-width: 70%
+#| fig-height: 8
+#| fig-format: svg
+#| fig-align: center
+
+library(ggrepel)
+library(maps)
+
+
+map <- data.frame(map_data("world", "Kuwait"))
+metadata = read.csv("../data/Camel_milk_Microbiome_analysis/metadata.csv", header = T) %>% 
+            select(Sample.Name, Lat_Lon, Group) %>%
+            separate(col = Lat_Lon,into=c("lat","r","lon","r2"),sep = " ") %>%
+            select(-starts_with("r")) %>% 
+            group_by(lat,lon) %>% 
+            mutate(gp = cur_group_id()) 
+
+coord_sum = metadata %>% summarise(gp = unique(gp)) %>% mutate(lat = as.numeric(lat), lon = as.numeric(lon))
+
+ggplot()+
+    geom_polygon(data = map, aes(x = long, y = lat, group = group), fill = NA, color = "black")+
+    geom_point(data = coord_sum,aes(x = lon, y = lat), color = "black")+
+    geom_text_repel(data = coord_sum, aes(x = lon, y = lat,label = gp))+
+    labs(title = "Kuwait")+
+    theme_minimal()
+
+```
 
 ## Índice de Chao 
 
 ```{r}
+#| warning: false
+#| column: page
+#| out-width: 100%
+
+
 library(vegan)
-
-
-metadata = read.csv("../data/Camel_milk_Microbiome_analysis/metadata.csv", header = T) %>% select(Sample.Name, Lat_Lon, Group)
 
 
 
 
 diversity = estimateR(t(metagenomes@otu_table@.Data))
 
-data.frame(t(diversity)) %>% 
+dat = data.frame(t(diversity)) %>% 
     rownames_to_column(var = "Sample.Name") %>% 
     mutate(Sample.Name = str_remove(Sample.Name, "_R1")) %>%
     left_join(metadata, by = "Sample.Name") %>%
-    ggplot(aes(x = Group, y = S.chao1 ))+
+    mutate(Group = str_remove(Group," ")) %>%
+    mutate(Group = factor(Group, levels = paste0("Group_",seq(1,16))))
+
+dat %>% ggplot(aes(x = as.factor(gp), y = S.chao1, group = gp ))+
         geom_violin()+
+        geom_jitter()+
         theme_classic()+
         theme(axis.text.x = element_text(angle = 90))
+
 ```
 
 
