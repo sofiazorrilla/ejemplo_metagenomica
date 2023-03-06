@@ -10,6 +10,7 @@ format:
         fig-format: svg
         fig-width: 8
         fig-height: 5
+        self-contained: true
 bibliography: ../references.bib
 
 ---
@@ -179,11 +180,7 @@ ggplot()+
 #| column: page
 #| out-width: 100%
 
-
 library(vegan)
-
-
-
 
 diversity = estimateR(t(metagenomes@otu_table@.Data))
 
@@ -199,7 +196,6 @@ dat %>% ggplot(aes(x = as.factor(gp), y = S.chao1, group = gp ))+
         geom_jitter()+
         theme_classic()+
         theme(axis.text.x = element_text(angle = 90))
-
 ```
 
 
