@@ -1,0 +1,151 @@
+---
+title: "Procesamiento de datos metagenomicos"
+author: "Sofia"
+format: 
+    html:
+        theme: [default]
+        reference-location: margin
+        citation-location: margin
+bibliography: ../references.bib
+
+---
+
+## Descripción de los datos
+
+Datos de amplicones 16S obtenidos a través de secuenciación de Ilumina de la leche cruda de 133 camellos de tres sitios colectados en 2 estaciones [@Rahmeh2022]. 
+
+## Evaluación de calidad fastqc
+
+```{bash}
+#| eval: false
+
+# Activar ambiente en donde esta instalado fastqc
+conda activate metagenomica
+
+# ejecutar fastqc para cada muestra en el folder de la estación 1
+cd ../outputs
+
+input_dir="../data/Camel_milk_Microbiome_analysis/Fastq_season1"
+
+fastqc $input_dir/*.fastq.gz -o .
+
+```
+
+```{bash}
+#| eval: false
+
+conda activate metagenomica
+
+fastq_dir="../outputs/fastq"
+
+multiqc -d $fastq_dir -o ../outputs/multiqc
+```
+
+Revisar [resultados](outputs/multiqc/multiqc_report.html)
+
+
+## Asignación taxonómica
+
+Kraken2 requiere mucha memoria RAM, tiene que poder mantener la bd en memoria. Descargue la de 16 GB. 
+
+**Preguntas:** ¿Hay diferencias dependiendo de la bd que se utilice?
+
+```{r}
+#| eval: false
+
+library(gtools)
+
+files = list.files("../data/Camel_milk_Microbiome_analysis/Fastq_season1", pattern = ".fastq.gz", full.names = T) %>% mixedsort()
+
+for (i in seq(1,length(files),2)){
+    cat(paste0(files[[i]]," ",files[[i+1]],"\n"))
+}
+```
+
+```{bash}
+#| eval: false
+
+# Descargar bd estandar 16 GB (https://benlangmead.github.io/aws-indexes/k2)
+
+wget https://genome-idx.s3.amazonaws.com/kraken/k2_standard_16gb_20221209.tar.gz
+
+kraken2-build --db GREENGENES --special greengenes --threads 10
+
+# Descomprimir
+
+tar -xvzf k2_standard_16gb_20221209.tar.gz
+
+# Correr kraken vs GreenGenes db
+
+input_files=$(cat ../data/Camel_milk_Microbiome_analysis/sample_paths.txt)
+
+while read line
+do 
+
+name=$(echo $line | cut -d / -f 5 | cut -d \. -f 1 | sed -e 's/_R1//')
+
+kraken2 --use-names --db ../kraken2/GREENGENES --threads 25 --paired $line --output ../outputs/taxonomy_reads/$name.kraken --report ../outputs/taxonomy_reads/$name.report
+
+done <  ../data/Camel_milk_Microbiome_analysis/sample_paths.txt
+
+```
+
+### Generar tabla concatenada
+
+```{bash}
+
+kraken_files=$(ls -d ../outputs/taxonomy_reads/*.report)
+
+kraken-biom $kraken_files --fmt json -o ../outputs/taxonomy_reads/samples.biom
+
+```
+
+
+## Análisis 
+
+
+```{r}
+library("phyloseq")
+library("ggplot2")
+library("RColorBrewer")
+library("patchwork")
+library(tidyverse)
+
+
+metagenomes <- import_biom("../outputs/taxonomy_reads/samples.biom")
+
+metagenomes@tax_table@.Data <- substring(metagenomes@tax_table@.Data, 4)
+
+colnames(metagenomes@tax_table@.Data)<- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+
+# sum of OTUs per sample
+data.frame(n = sample_sums(metagenomes)) %>% ggplot(aes(x = rownames(.), y = n))+geom_col()
+```
+
+
+## Índice de Chao 
+
+```{r}
+library(vegan)
+
+
+metadata = read.csv("../data/Camel_milk_Microbiome_analysis/metadata.csv", header = T) %>% select(Sample.Name, Lat_Lon, Group)
+
+
+
+
+diversity = estimateR(t(metagenomes@otu_table@.Data))
+
+data.frame(t(diversity)) %>% 
+    rownames_to_column(var = "Sample.Name") %>% 
+    mutate(Sample.Name = str_remove(Sample.Name, "_R1")) %>%
+    left_join(metadata, by = "Sample.Name") %>%
+    ggplot(aes(x = Group, y = S.chao1 ))+
+        geom_violin()+
+        theme_classic()+
+        theme(axis.text.x = element_text(angle = 90))
+```
+
+
+
+

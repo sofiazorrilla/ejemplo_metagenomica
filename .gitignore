@@ -1,0 +1,14 @@
+# Ignorar el folder de data 
+data/
+
+# Ignore kraken2 folder
+kraken2/
+
+#Ignorar outputs de fastq
+outputs/fastq
+
+# Ignorar archivos .kraken y .report
+outputs/taxonomy_reads/*.kraken
+outputs/taxonomy_reads/*.report
+
+
