@@ -1,3 +1,6 @@
+# Archivo de extensiones vscode
+.vscode
+
 # Ignorar el folder de data 
 data/
 
