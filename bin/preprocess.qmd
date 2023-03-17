@@ -164,12 +164,18 @@ metadata = read.csv("../data/Camel_milk_Microbiome_analysis/metadata.csv", heade
 
 coord_sum = metadata %>% summarise(gp = unique(gp)) %>% mutate(lat = as.numeric(lat), lon = as.numeric(lon))
 
-ggplot()+
+mapa = ggplot()+
     geom_polygon(data = map, aes(x = long, y = lat, group = group), fill = NA, color = "black")+
     geom_point(data = coord_sum,aes(x = lon, y = lat), color = "black")+
     geom_text_repel(data = coord_sum, aes(x = lon, y = lat,label = gp))+
     labs(title = "Kuwait")+
-    theme_minimal()
+    theme_minimal()+
+    theme(panel.grid.major = element_blank(),
+            axis.text = element_blank(),
+            axis.ticks = element_blank(),
+            axis.title = element_blank())
+
+mapa
 
 ```
 
@@ -181,6 +187,7 @@ ggplot()+
 #| out-width: 100%
 
 library(vegan)
+library(patchwork)
 
 diversity = estimateR(t(metagenomes@otu_table@.Data))
 
@@ -196,8 +203,66 @@ dat %>% ggplot(aes(x = as.factor(gp), y = S.chao1, group = gp ))+
         geom_jitter()+
         theme_classic()+
         theme(axis.text.x = element_text(angle = 90))
+
+obs_vs_chao = dat %>% 
+    select(Sample.Name,S.obs,S.chao1,gp) %>%
+    pivot_longer(cols = starts_with("S."), names_to = "var",values_to = "val") %>%
+    ggplot(aes(x = as.factor(gp),  group = interaction(gp,var), fill = var, y = val))+
+        geom_violin(position = "dodge")+
+        geom_jitter(size = 1, alpha = 0.4)+
+        labs(x = "Sitios de muestreo", y = "Número de OTUs", fill = "Índice")+
+        scale_fill_discrete(labels = c("Chao1","Riqueza\nobservada"))+
+        theme_classic()+
+        theme(axis.text.x = element_text(angle = 90))#,
+             #plot.margin = margin(120, 100, 0, 0, "pt"),)
+
+ ```
+
+```{r}
+#| warning: false
+#| column: page
+#| out-width: 100%
+#| fig-width: 13
+#| fig-height: 10
+
+
+join = obs_vs_chao + inset_element(mapa,0.7,0.65,1,1,align_to = "full")
+
+ggsave("../outputs/figuras/chao_ejemplo.svg", obs_vs_chao)
+
 ```
 
+Ejemplo: Durante los años 2020 y 2021, Rahmeh et al., (2022) recolectaron muestras de la leche de 133 camellos en 14 localidades. Para cada hicieron una secuenciación de amplicones (16S) con el objetivo de conocer la riqueza y diversidad de especies del microbioma de la leche. Utilizando estos datos realizamos la comparación entre la riqueza observada en la muestra y la estimada mediante el índice de Chao (Figura X). En la mayoría de los casos, la riqueza estimada por el índice de Chao1 es mayor que la de la muestra. Esto es porque el número de singletons (OTUs representados por una única secuencia) 
+
+```{r}
+#| include: false
+
+dat %>% 
+    select(Sample.Name,S.obs,S.chao1,gp) %>%
+    group_by(Sample.Name) %>%
+    mutate(dif = S.chao1 - S.obs) %>%
+    pivot_longer(cols = c(dif,starts_with("S.")), names_to = "var",values_to = "val") %>%
+    filter(gp == 8) %>%
+     ggplot(aes(x = Sample.Name, y = val, group = interaction(Sample.Name,var), fill = var))+
+        geom_col(position = "dodge")
+
+
+metagenomes@otu_table@.Data %>% 
+    as.data.frame() %>% 
+    rownames_to_column(var = "sp.index") %>%
+    pivot_longer(cols = 2:ncol(.), names_to = "Sample.Name", values_to = "n") %>% 
+    group_by(Sample.Name, n) %>% 
+    summarise(counts = n()) %>%
+    left_join(dat[,which(names(dat) %in% c("Sample.Name","gp"))], by = "Sample.Name" ) %>%
+    filter(n > 0) %>%
+    mutate(perc = counts/sum(counts)*100) %>%
+    filter(n %in% c(1,2)) %>%
+    filter(gp == 8) %>%
+    ggplot(aes(x = Sample.Name, y = perc, group = interaction(Sample.Name,n), fill = as.factor(n)))+
+        geom_col(position = "dodge")
+
+
+```
 
 
 
